@@ -5,9 +5,53 @@ namespace App\Services;
 use App\Models\PushSubscription;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
+use Minishlink\WebPush\WebPush;
+use Minishlink\WebPush\Subscription;
 
 class PushNotificationService
 {
+    private ?WebPush $webPush = null;
+
+    /**
+     * Get WebPush instance
+     */
+    private function getWebPush(): ?WebPush
+    {
+        if ($this->webPush !== null) {
+            return $this->webPush;
+        }
+
+        $vapidPublicKey = config('services.push.public_key');
+        $vapidPrivateKey = config('services.push.private_key');
+
+        if (!$vapidPublicKey || !$vapidPrivateKey) {
+            Log::warning('VAPID keys not configured. Run: php artisan vapid:keys');
+            return null;
+        }
+
+        try {
+            $auth = [
+                'VAPID' => [
+                    'subject' => config('app.url', 'mailto:admin@example.com'),
+                    'publicKey' => $vapidPublicKey,
+                    'privateKey' => $vapidPrivateKey,
+                ],
+            ];
+
+            $this->webPush = new WebPush($auth);
+            $this->webPush->setDefaultOptions([
+                'TTL' => 86400, // 24 hours
+                'urgency' => 'high',
+                'topic' => 'new-task',
+            ]);
+
+            return $this->webPush;
+        } catch (\Exception $e) {
+            Log::error('Error creating WebPush instance: ' . $e->getMessage());
+            return null;
+        }
+    }
+
     /**
      * Kirim notifikasi ke user spesifik
      */
@@ -20,14 +64,53 @@ class PushNotificationService
             return false;
         }
 
+        $webPush = $this->getWebPush();
+        if (!$webPush) {
+            return false;
+        }
+
+        $payload = json_encode($notification);
         $successCount = 0;
+        $failedSubscriptions = [];
+
         foreach ($subscriptions as $subscription) {
-            if ($this->pushMessage($subscription, $notification)) {
+            try {
+                $webPushSubscription = Subscription::create([
+                    'endpoint' => $subscription->endpoint,
+                    'keys' => [
+                        'p256dh' => $subscription->p256dh_key,
+                        'auth' => $subscription->auth_key,
+                    ],
+                ]);
+
+                $webPush->queueNotification($webPushSubscription, $payload);
+            } catch (\Exception $e) {
+                Log::error("Error queuing notification for subscription {$subscription->id}: " . $e->getMessage());
+                $failedSubscriptions[] = $subscription->id;
+            }
+        }
+
+        // Flush all notifications
+        foreach ($webPush->flush() as $report) {
+            $endpoint = $report->getRequest()->getUri()->__toString();
+            
+            if ($report->isSuccess()) {
+                Log::info("Push notification sent successfully to: {$endpoint}");
                 $successCount++;
-                $subscription->update(['last_used_at' => now()]);
+                
+                // Update last_used_at
+                PushSubscription::where('endpoint', $endpoint)
+                    ->where('user_id', $user->id)
+                    ->update(['last_used_at' => now()]);
             } else {
-                // Hapus subscription jika tidak valid
-                $subscription->delete();
+                $reason = $report->getReason();
+                Log::warning("Push notification failed for {$endpoint}: {$reason}");
+                
+                // Hapus subscription jika expired/invalid
+                if ($report->isSubscriptionExpired()) {
+                    PushSubscription::where('endpoint', $endpoint)->delete();
+                    Log::info("Removed expired subscription: {$endpoint}");
+                }
             }
         }
 
@@ -90,61 +173,54 @@ class PushNotificationService
             }
         }
 
+        Log::info("Push notifications sent to {$successCount} users for target {$target}");
         return $successCount;
     }
 
     /**
-     * Push message ke subscription
+     * Send notification to all subscriptions (broadcast)
      */
-    private function pushMessage(PushSubscription $subscription, array $notification): bool
+    public function sendToAll(array $notification): int
     {
-        try {
-            $vapidPublicKey = config('services.push.public_key');
-            $vapidPrivateKey = config('services.push.private_key');
-
-            if (!$vapidPublicKey || !$vapidPrivateKey) {
-                Log::warning('VAPID keys not configured');
-                return false;
-            }
-
-            $payload = json_encode($notification);
-
-            // Menggunakan curl untuk push notification
-            $curlHandle = curl_init();
-            curl_setopt_array($curlHandle, [
-                CURLOPT_URL => $subscription->endpoint,
-                CURLOPT_CUSTOMREQUEST => 'POST',
-                CURLOPT_POSTFIELDS => $payload,
-                CURLOPT_HTTPHEADER => [
-                    'Content-Type: application/json',
-                    'TTL: 24' . (60 * 60), // 24 jam
-                    'Urgency: high',
-                    'Topic: new-task',
-                ],
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT => 10,
-            ]);
-
-            $response = curl_exec($curlHandle);
-            $statusCode = curl_getinfo($curlHandle, CURLINFO_HTTP_CODE);
-            curl_close($curlHandle);
-
-            if ($statusCode >= 200 && $statusCode < 300) {
-                Log::info("Push notification sent successfully to {$subscription->endpoint}");
-                return true;
-            }
-
-            if ($statusCode === 410) {
-                // Subscription no longer valid
-                Log::info("Push subscription no longer valid: {$subscription->endpoint}");
-                return false;
-            }
-
-            Log::warning("Push notification failed with status {$statusCode}: {$response}");
-            return false;
-        } catch (\Exception $e) {
-            Log::error("Error pushing notification: {$e->getMessage()}");
-            return false;
+        $subscriptions = PushSubscription::with('user')->get();
+        
+        if ($subscriptions->isEmpty()) {
+            return 0;
         }
+
+        $webPush = $this->getWebPush();
+        if (!$webPush) {
+            return 0;
+        }
+
+        $payload = json_encode($notification);
+        
+        foreach ($subscriptions as $subscription) {
+            try {
+                $webPushSubscription = Subscription::create([
+                    'endpoint' => $subscription->endpoint,
+                    'keys' => [
+                        'p256dh' => $subscription->p256dh_key,
+                        'auth' => $subscription->auth_key,
+                    ],
+                ]);
+
+                $webPush->queueNotification($webPushSubscription, $payload);
+            } catch (\Exception $e) {
+                Log::error("Error queuing notification: " . $e->getMessage());
+            }
+        }
+
+        $successCount = 0;
+        foreach ($webPush->flush() as $report) {
+            if ($report->isSuccess()) {
+                $successCount++;
+            } elseif ($report->isSubscriptionExpired()) {
+                $endpoint = $report->getRequest()->getUri()->__toString();
+                PushSubscription::where('endpoint', $endpoint)->delete();
+            }
+        }
+
+        return $successCount;
     }
 }
