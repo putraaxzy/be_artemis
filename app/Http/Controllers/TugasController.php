@@ -361,6 +361,30 @@ class TugasController extends Controller
             ]);
         }
 
+        // Kirim notifikasi ke guru pemilik tugas
+        try {
+            $tugas = $penugasan->tugas;
+            $guru = User::find($tugas->id_guru);
+            
+            if ($guru) {
+                $pushService = new PushNotificationService();
+                $pushService->sendToUser($guru, [
+                    'title' => 'Tugas Dikumpulkan',
+                    'body' => "{$user->name} ({$user->kelas} {$user->jurusan}) telah mengumpulkan tugas '{$tugas->judul}'",
+                    'icon' => '/icon-192x192.png',
+                    'badge' => '/icon-192x192.png',
+                    'data' => [
+                        'url' => '/task/' . $tugas->id,
+                        'type' => 'task_submitted',
+                        'task_id' => $tugas->id,
+                        'student_id' => $user->id,
+                    ]
+                ]);
+            }
+        } catch (\Exception $e) {
+            \Log::warning('Failed to send push notification to teacher: ' . $e->getMessage());
+        }
+
         return response()->json([
             'berhasil' => true,
             'data' => [

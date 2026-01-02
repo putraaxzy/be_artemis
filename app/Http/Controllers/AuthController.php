@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\Jurusan;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
@@ -16,11 +17,25 @@ class AuthController extends Controller
      */
     public function registerOptions()
     {
+        // Ambil data jurusan dari database
+        $jurusans = Jurusan::all();
+        
+        // Group by kelas for frontend structure
+        $jurusanByKelas = [];
+        foreach ($jurusans as $j) {
+            $jurusanByKelas[$j->kelas][] = $j->jurusan;
+        }
+
+        // Flatten semua jurusan unik
+        $allJurusan = $jurusans->pluck('jurusan')->unique()->values()->all();
+        sort($allJurusan);
+
         return response()->json([
             'berhasil' => true,
             'data' => [
-                'kelas' => ['X', 'XI', 'XII'],
-                'jurusan' => ['MPLB', 'RPL', 'PM', 'TKJ', 'AKL']
+                'kelas' => ['X', 'XI', 'XII'], // Bisa juga diambil dari DB unique 'kelas', tapi hardcode OK for order
+                'jurusan' => $allJurusan, 
+                'jurusan_by_kelas' => $jurusanByKelas, 
             ],
             'pesan' => 'Opsi registrasi berhasil diambil'
         ]);
@@ -31,19 +46,37 @@ class AuthController extends Controller
      */
     public function register(Request $request)
     {
+        // Valid jurusan berdasarkan kelas (Query DB)
+        // Kita cek manual atau pakai exists rule nanti
+        
         $validator = Validator::make($request->all(), [
             'username' => 'required|string|max:255|unique:users|regex:/^[a-zA-Z0-9_]+$/',
             'name' => 'required|string|max:255',
             'telepon' => 'required|string|max:20|unique:users',
             'password' => 'required|string|min:8',
             'kelas' => 'required|in:X,XI,XII',
-            'jurusan' => 'required|in:MPLB,RPL,PM,TKJ,AKL'
+            'jurusan' => 'required|string|max:50' // Validasi logic di bawah
         ]);
 
         if ($validator->fails()) {
             return response()->json([
                 'berhasil' => false,
                 'pesan' => $validator->errors()->first()
+            ], 400);
+        }
+
+        // Validasi jurusan sesuai kelas via Database
+        $kelas = $request->kelas;
+        $jurusan = $request->jurusan;
+        
+        $exists = Jurusan::where('kelas', $kelas)
+            ->where('jurusan', $jurusan)
+            ->exists();
+
+        if (!$exists) {
+            return response()->json([
+                'berhasil' => false,
+                'pesan' => "Jurusan '$jurusan' tidak valid untuk kelas $kelas"
             ], 400);
         }
 
