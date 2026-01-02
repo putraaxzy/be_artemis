@@ -24,6 +24,9 @@ Route::prefix('auth')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
 });
 
+// VAPID key - public route (tidak perlu auth)
+Route::get('/notifications/vapid-key', [NotificationController::class, 'getVapidPublicKey']);
+
 // routes bot (untuk webhook dari bot external)
 Route::prefix('bot')->group(function () {
     // endpoint dengan proteksi api key (untuk bot node.js)
