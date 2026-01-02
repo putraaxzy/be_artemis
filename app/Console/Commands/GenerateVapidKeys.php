@@ -12,7 +12,7 @@ class GenerateVapidKeys extends Command
      *
      * @var string
      */
-    protected $signature = 'vapid:keys';
+    protected $signature = 'vapid:keys {--force : Overwrite existing keys}';
 
     /**
      * The console command description.
@@ -33,44 +33,71 @@ class GenerateVapidKeys extends Command
                 return self::FAILURE;
             }
 
-            $this->info('Generating VAPID keys...');
+            // Cek apakah key sudah ada
+            $envPath = base_path('.env');
+            if (file_exists($envPath)) {
+                $envContent = file_get_contents($envPath);
+                if (Str::contains($envContent, 'VAPID_PUBLIC_KEY=') && !$this->option('force')) {
+                    if (!$this->confirm('VAPID keys sudah ada. Apakah ingin generate ulang?', false)) {
+                        $this->info('Operasi dibatalkan.');
+                        return self::SUCCESS;
+                    }
+                }
+            }
 
-            // Generate EC key untuk VAPID (384 bits untuk security)
+            $this->info('Generating VAPID keys untuk Web Push API...');
+
+            // Generate P-256 EC key (required for Web Push)
             $config = [
-                "private_key_bits" => 384,
                 "private_key_type" => OPENSSL_KEYTYPE_EC,
-                "curve_name" => "secp384r1",
+                "curve_name" => "prime256v1", // P-256 curve, required for Web Push
             ];
 
             $res = openssl_pkey_new($config);
             if (!$res) {
-                $this->error('Gagal membuat private key');
+                $this->error('Gagal membuat private key: ' . openssl_error_string());
                 return self::FAILURE;
             }
 
-            openssl_pkey_export($res, $privKey);
-            $pubKeyDetails = openssl_pkey_get_details($res);
-            $pubKey = $pubKeyDetails["key"];
+            // Get key details
+            $details = openssl_pkey_get_details($res);
+            if (!$details || !isset($details['ec'])) {
+                $this->error('Gagal mendapatkan EC key details');
+                return self::FAILURE;
+            }
 
-            // Clean up keys (hapus PEM headers dan newlines)
-            $privKeyForEnv = str_replace(["\n", "\r"], "", $privKey);
-            $pubKeyForEnv = str_replace(["\n", "\r"], "", $pubKey);
+            // Extract raw public key (uncompressed format: 0x04 + x + y)
+            $x = $details['ec']['x'];
+            $y = $details['ec']['y'];
+            
+            // Pad x and y to 32 bytes each
+            $x = str_pad($x, 32, "\0", STR_PAD_LEFT);
+            $y = str_pad($y, 32, "\0", STR_PAD_LEFT);
+            
+            // Create uncompressed public key (65 bytes: 0x04 prefix + 32 bytes x + 32 bytes y)
+            $rawPublicKey = "\x04" . $x . $y;
+            
+            // Extract raw private key (d value)
+            $d = $details['ec']['d'];
+            $d = str_pad($d, 32, "\0", STR_PAD_LEFT);
+            
+            // Encode as URL-safe base64 (no padding)
+            $publicKeyBase64 = $this->base64UrlEncode($rawPublicKey);
+            $privateKeyBase64 = $this->base64UrlEncode($d);
 
             $this->info('VAPID Keys generated successfully!');
             $this->newLine();
 
             // Display keys
-            $this->line('<fg=cyan>Public Key:</fg=cyan>');
-            $this->line($pubKey);
+            $this->line('<fg=cyan>Public Key (URL-safe base64, ' . strlen($publicKeyBase64) . ' chars):</fg=cyan>');
+            $this->line($publicKeyBase64);
             $this->newLine();
 
-            $this->line('<fg=cyan>Private Key:</fg=cyan>');
-            $this->line($privKey);
+            $this->line('<fg=cyan>Private Key (URL-safe base64, ' . strlen($privateKeyBase64) . ' chars):</fg=cyan>');
+            $this->line($privateKeyBase64);
             $this->newLine();
 
             // Update atau create .env file
-            $envPath = base_path('.env');
-            
             if (!file_exists($envPath)) {
                 $this->warn('.env file not found, creating new one...');
                 file_put_contents($envPath, '');
@@ -79,34 +106,34 @@ class GenerateVapidKeys extends Command
             $envContent = file_get_contents($envPath);
 
             // Replace atau append VAPID keys
-            if (Str::contains($envContent, 'VAPID_PUBLIC_KEY')) {
+            if (Str::contains($envContent, 'VAPID_PUBLIC_KEY=')) {
                 $envContent = preg_replace(
                     '/VAPID_PUBLIC_KEY=.*/',
-                    'VAPID_PUBLIC_KEY="' . $pubKeyForEnv . '"',
+                    'VAPID_PUBLIC_KEY=' . $publicKeyBase64,
                     $envContent
                 );
             } else {
-                $envContent .= "\nVAPID_PUBLIC_KEY=\"" . $pubKeyForEnv . "\"\n";
+                $envContent .= "\nVAPID_PUBLIC_KEY=" . $publicKeyBase64 . "\n";
             }
 
-            if (Str::contains($envContent, 'VAPID_PRIVATE_KEY')) {
+            if (Str::contains($envContent, 'VAPID_PRIVATE_KEY=')) {
                 $envContent = preg_replace(
                     '/VAPID_PRIVATE_KEY=.*/',
-                    'VAPID_PRIVATE_KEY="' . $privKeyForEnv . '"',
+                    'VAPID_PRIVATE_KEY=' . $privateKeyBase64,
                     $envContent
                 );
             } else {
-                $envContent .= "VAPID_PRIVATE_KEY=\"" . $privKeyForEnv . "\"\n";
+                $envContent .= "VAPID_PRIVATE_KEY=" . $privateKeyBase64 . "\n";
             }
 
             file_put_contents($envPath, $envContent);
 
-            $this->info('✓ VAPID keys berhasil disimpan ke .env');
+            $this->info('VAPID keys berhasil disimpan ke .env');
             $this->newLine();
 
             $this->line('<fg=green;options=bold>Langkah berikutnya:</fg=green;options=bold>');
-            $this->line('1. Jalankan: <fg=yellow>php artisan migrate</fg=yellow>');
-            $this->line('2. Restart aplikasi');
+            $this->line('1. Jalankan: <fg=yellow>php artisan config:clear</fg=yellow>');
+            $this->line('2. Restart server PHP');
             $this->line('3. Frontend akan otomatis menggunakan VAPID public key');
 
             return self::SUCCESS;
@@ -115,5 +142,13 @@ class GenerateVapidKeys extends Command
             $this->error('Error: ' . $e->getMessage());
             return self::FAILURE;
         }
+    }
+
+    /**
+     * Encode string ke URL-safe base64 (tanpa padding)
+     */
+    private function base64UrlEncode(string $data): string
+    {
+        return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
     }
 }
