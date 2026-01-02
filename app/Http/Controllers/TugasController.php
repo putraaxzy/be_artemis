@@ -199,8 +199,8 @@ class TugasController extends Controller
         $notification = [
             'title' => 'Tugas Baru: ' . $tugas->judul,
             'body' => 'Ada tugas baru yang perlu dikerjakan. Deadline: ' . ($tugas->tanggal_deadline?->format('d M Y') ?? 'Tidak ditentukan'),
-            'icon' => asset('images/notification-icon.png'),
-            'badge' => asset('images/notification-badge.png'),
+            'icon' => url('/batik.png'),
+            'badge' => url('/batik.png'),
             'tag' => 'task-' . $tugas->id,
             'data' => [
                 'url' => '/tugas/' . $tugas->id,

@@ -84,8 +84,8 @@ class NotificationController extends Controller
         $notification = [
             'title' => 'Test Notification',
             'body' => 'Ini adalah test notification dari sistem',
-            'icon' => asset('images/notification-icon.png'),
-            'badge' => asset('images/notification-badge.png'),
+            'icon' => url('/batik.png'),
+            'badge' => url('/batik.png'),
             'tag' => 'test-notification',
             'data' => [
                 'url' => url('/'),
