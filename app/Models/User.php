@@ -26,6 +26,9 @@ class User extends Authenticatable implements JWTSubject
         'kelas',
         'jurusan',
         'password',
+        'avatar',
+        'username_changed_at',
+        'is_first_login',
     ];
 
     /**
@@ -48,7 +51,46 @@ class User extends Authenticatable implements JWTSubject
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'username_changed_at' => 'datetime',
+            'is_first_login' => 'boolean',
         ];
+    }
+
+    /**
+     * Check if user can change username (limit 7 days)
+     */
+    public function canChangeUsername(): bool
+    {
+        if (!$this->username_changed_at) {
+            return true;
+        }
+        return $this->username_changed_at->addDays(7)->isPast();
+    }
+
+    /**
+     * Get days until username can be changed
+     */
+    public function daysUntilUsernameChange(): int
+    {
+        if (!$this->username_changed_at) {
+            return 0;
+        }
+        $nextChangeDate = $this->username_changed_at->addDays(7);
+        if ($nextChangeDate->isPast()) {
+            return 0;
+        }
+        return now()->diffInDays($nextChangeDate, false);
+    }
+
+    /**
+     * Get avatar URL
+     */
+    public function getAvatarUrlAttribute(): ?string
+    {
+        if (!$this->avatar) {
+            return null;
+        }
+        return asset('storage/' . $this->avatar);
     }
 
     /**

@@ -18,6 +18,8 @@
 /public/storage
 /storage/*.key
 /storage/pail
+/storage/app/siswa_credentials.txt
+/storage/app/siswa_credentials.csv
 /vendor
 Homestead.json
 Homestead.yaml

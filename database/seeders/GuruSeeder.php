@@ -25,15 +25,17 @@ class GuruSeeder extends Seeder
         ];
 
         foreach ($guruData as $guru) {
-            User::create([
-                'username' => $guru['username'],
-                'name' => $guru['name'],
-                'telepon' => null,
-                'password' => Hash::make($guru['password']),
-                'role' => 'guru',
-                'kelas' => null,
-                'jurusan' => null,
-            ]);
+            User::updateOrCreate(
+                ['username' => $guru['username']],
+                [
+                    'name' => $guru['name'],
+                    'telepon' => null,
+                    'password' => Hash::make($guru['password']),
+                    'role' => 'guru',
+                    'kelas' => null,
+                    'jurusan' => null,
+                ]
+            );
         }
 
         $this->command->info('data seed guru telah berhasil ditambahkan');

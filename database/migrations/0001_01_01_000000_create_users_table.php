@@ -20,6 +20,9 @@ return new class extends Migration
             $table->enum('role', ['guru', 'siswa']);
             $table->string('kelas')->nullable();
             $table->string('jurusan')->nullable();
+            $table->string('avatar')->nullable(); 
+            $table->timestamp('username_changed_at')->nullable(); 
+            $table->boolean('is_first_login')->default(true); 
             $table->rememberToken();
             $table->timestamps();
         });

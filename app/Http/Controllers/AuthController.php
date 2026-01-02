@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
@@ -54,7 +55,15 @@ class AuthController extends Controller
             'role' => 'siswa',
             'kelas' => $request->kelas,
             'jurusan' => $request->jurusan,
+            'is_first_login' => false, 
         ]);
+
+        // Handle avatar upload (opsional)
+        if ($request->hasFile('avatar')) {
+            $avatarPath = $request->file('avatar')->store('avatars', 'public');
+            $user->avatar = $avatarPath;
+            $user->save();
+        }
 
         $this->autoAssignTasksToNewStudent($user);
 
@@ -64,17 +73,7 @@ class AuthController extends Controller
             'berhasil' => true,
             'data' => [
                 'token' => $token,
-                'pengguna' => [
-                    'id' => $user->id,
-                    'username' => $user->username,
-                    'name' => $user->name,
-                    'telepon' => $user->telepon,
-                    'role' => $user->role,
-                    'kelas' => $user->kelas,
-                    'jurusan' => $user->jurusan,
-                    'dibuat_pada' => $user->created_at->toISOString(),
-                    'diperbarui_pada' => $user->updated_at->toISOString()
-                ]
+                'pengguna' => $this->formatUserData($user)
             ],
             'pesan' => 'Registrasi berhasil'
         ], 201);
@@ -116,17 +115,7 @@ class AuthController extends Controller
             'berhasil' => true,
             'data' => [
                 'token' => $token,
-                'pengguna' => [
-                    'id' => $user->id,
-                    'username' => $user->username,
-                    'name' => $user->name,
-                    'telepon' => $user->telepon,
-                    'role' => $user->role,
-                    'kelas' => $user->kelas,
-                    'jurusan' => $user->jurusan,
-                    'dibuat_pada' => $user->created_at->toISOString(),
-                    'diperbarui_pada' => $user->updated_at->toISOString()
-                ]
+                'pengguna' => $this->formatUserData($user)
             ],
             'pesan' => 'Login berhasil'
         ]);
@@ -174,18 +163,161 @@ class AuthController extends Controller
 
         return response()->json([
             'berhasil' => true,
-            'data' => [
-                'id' => $user->id,
-                'username' => $user->username,
-                'name' => $user->name,
-                'telepon' => $user->telepon,
-                'role' => $user->role,
-                'kelas' => $user->kelas,
-                'jurusan' => $user->jurusan,
-                'dibuat_pada' => $user->created_at->toISOString(),
-                'diperbarui_pada' => $user->updated_at->toISOString()
-            ]
+            'data' => $this->formatUserData($user)
         ]);
+    }
+
+    /**
+     * Update user profile
+     */
+    public function updateProfile(Request $request)
+    {
+        $user = JWTAuth::user();
+        
+        $validator = Validator::make($request->all(), [
+            'username' => 'sometimes|required|string|max:255|regex:/^[a-zA-Z0-9_.]+$/|unique:users,username,' . $user->id,
+            'name' => 'sometimes|required|string|max:255',
+            'telepon' => 'sometimes|nullable|string|max:20',
+            'password' => 'sometimes|required|string|min:8',
+            'avatar' => 'sometimes|nullable|image|mimes:jpeg,png,jpg,gif,webp|max:10240', // Max 10MB
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'berhasil' => false,
+                'pesan' => $validator->errors()->first()
+            ], 400);
+        }
+
+        // Update username (dengan limit 7 hari)
+        if ($request->has('username') && $request->username !== $user->username) {
+            if (!$user->canChangeUsername()) {
+                $daysLeft = $user->daysUntilUsernameChange();
+                return response()->json([
+                    'berhasil' => false,
+                    'pesan' => "Username hanya bisa diubah 7 hari sekali. Tersisa {$daysLeft} hari lagi."
+                ], 400);
+            }
+            $user->username = $request->username;
+            $user->username_changed_at = now();
+        }
+
+        // Update nama
+        if ($request->has('name')) {
+            $user->name = $request->name;
+        }
+
+        // Update telepon
+        if ($request->has('telepon')) {
+            $user->telepon = $request->telepon;
+        }
+
+        // Update password
+        if ($request->has('password')) {
+            $user->password = Hash::make($request->password);
+        }
+
+        // Upload avatar
+        if ($request->hasFile('avatar')) {
+            if ($user->avatar) {
+                Storage::disk('public')->delete($user->avatar);
+            }
+            $avatarPath = $request->file('avatar')->store('avatars', 'public');
+            $user->avatar = $avatarPath;
+        }
+
+        // Jika user pertama kali login (dari seeder), set flag false
+        if ($user->is_first_login) {
+            $user->is_first_login = false;
+        }
+
+        $user->save();
+
+        return response()->json([
+            'berhasil' => true,
+            'data' => $this->formatUserData($user),
+            'pesan' => 'Profil berhasil diperbarui'
+        ]);
+    }
+
+    /**
+     * Complete first login setup (untuk user dari seeder)
+     */
+    public function completeFirstLogin(Request $request)
+    {
+        $user = JWTAuth::user();
+
+        if (!$user->is_first_login) {
+            return response()->json([
+                'berhasil' => false,
+                'pesan' => 'Anda sudah menyelesaikan setup awal'
+            ], 400);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'username' => 'required|string|max:255|regex:/^[a-zA-Z0-9_.]+$/|unique:users,username,' . $user->id,
+            'password' => 'required|string|min:8',
+            'telepon' => 'nullable|string|max:20',
+            'avatar' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:10240', 
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'berhasil' => false,
+                'pesan' => $validator->errors()->first()
+            ], 400);
+        }
+
+        // Update username
+        $user->username = $request->username;
+        $user->username_changed_at = now();
+
+        // Update password (wajib ganti dari default)
+        $user->password = Hash::make($request->password);
+
+        // Update telepon jika ada
+        if ($request->has('telepon')) {
+            $user->telepon = $request->telepon;
+        }
+
+        // Upload avatar jika ada
+        if ($request->hasFile('avatar')) {
+            $avatarPath = $request->file('avatar')->store('avatars', 'public');
+            $user->avatar = $avatarPath;
+        }
+
+        // Set first login selesai
+        $user->is_first_login = false;
+
+        $user->save();
+
+        return response()->json([
+            'berhasil' => true,
+            'data' => $this->formatUserData($user),
+            'pesan' => 'Setup awal berhasil! Selamat datang.'
+        ]);
+    }
+
+    /**
+     * Format user data untuk response
+     */
+    private function formatUserData(User $user): array
+    {
+        return [
+            'id' => $user->id,
+            'username' => $user->username,
+            'name' => $user->name,
+            'telepon' => $user->telepon,
+            'role' => $user->role,
+            'kelas' => $user->kelas,
+            'jurusan' => $user->jurusan,
+            'avatar' => $user->avatar_url,
+            'is_first_login' => $user->is_first_login,
+            'can_change_username' => $user->canChangeUsername(),
+            'days_until_username_change' => $user->daysUntilUsernameChange(),
+            'dibuat_pada' => $user->created_at->toISOString(),
+            'diperbarui_pada' => $user->updated_at->toISOString()
+        ];
     }
 
     /**

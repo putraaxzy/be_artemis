@@ -50,6 +50,12 @@ Route::middleware(['jwt.auth'])->group(function () {
         Route::get('/me', [AuthController::class, 'me']);
     });
 
+    // routes user profile
+    Route::prefix('user')->group(function () {
+        Route::put('/profile', [AuthController::class, 'updateProfile']);
+        Route::post('/complete-first-login', [AuthController::class, 'completeFirstLogin']);
+    });
+
     // routes siswa & kelas
     Route::prefix('siswa')->group(function () {
         Route::get('/', [TugasController::class, 'listSiswa']);
