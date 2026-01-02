@@ -35,11 +35,11 @@ class GenerateVapidKeys extends Command
 
             $this->info('Generating VAPID keys...');
 
-            // Generate EC key untuk VAPID (standar untuk web push)
+            // Generate EC key untuk VAPID (384 bits untuk security)
             $config = [
-                "private_key_bits" => 256,
+                "private_key_bits" => 384,
                 "private_key_type" => OPENSSL_KEYTYPE_EC,
-                "curve_name" => "prime256v1",
+                "curve_name" => "secp384r1",
             ];
 
             $res = openssl_pkey_new($config);
