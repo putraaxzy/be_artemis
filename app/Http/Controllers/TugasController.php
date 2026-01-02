@@ -6,6 +6,7 @@ use App\Models\Tugas;
 use App\Models\Penugasaan;
 use App\Models\User;
 use App\Exports\TugasExport;
+use App\Services\PushNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Maatwebsite\Excel\Facades\Excel;
@@ -190,6 +191,33 @@ class TugasController extends Controller
                 'id_siswa' => $siswaId,
                 'status' => 'pending'
             ]);
+        }
+
+        // Kirim push notification ke siswa
+        $notificationService = new PushNotificationService();
+        
+        $notification = [
+            'title' => 'Tugas Baru: ' . $tugas->judul,
+            'body' => 'Ada tugas baru yang perlu dikerjakan. Deadline: ' . ($tugas->tanggal_deadline?->format('d M Y') ?? 'Tidak ditentukan'),
+            'icon' => asset('images/notification-icon.png'),
+            'badge' => asset('images/notification-badge.png'),
+            'tag' => 'task-' . $tugas->id,
+            'data' => [
+                'url' => '/tugas/' . $tugas->id,
+                'taskId' => $tugas->id,
+                'type' => 'new_task',
+            ],
+        ];
+
+        if ($request->target === 'kelas') {
+            // Kirim ke multiple kelas
+            $classes = array_map(fn($kelasInfo) => trim(strtoupper($kelasInfo['kelas'])), $request->id_target);
+            foreach ($classes as $kelas) {
+                $notificationService->sendToClass($kelas, $notification);
+            }
+        } else {
+            // Kirim ke siswa tertentu
+            $notificationService->sendToTargetStudents('siswa', $siswaIds, $notification);
         }
 
         return response()->json([

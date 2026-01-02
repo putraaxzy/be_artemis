@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\TugasController;
 use App\Http\Controllers\BotController;
+use App\Http\Controllers\NotificationController;
 
 /*
 |--------------------------------------------------------------------------
@@ -89,5 +90,14 @@ Route::middleware(['jwt.auth'])->group(function () {
     // riwayat bot reminder (hanya guru)
     Route::prefix('bot')->middleware(['role:guru'])->group(function () {
         Route::get('/reminder/{idTugas}', [BotController::class, 'ambilReminder']);
+    });
+
+    // routes push notification
+    Route::prefix('notifications')->group(function () {
+        Route::post('/subscribe', [NotificationController::class, 'subscribe']);
+        Route::post('/unsubscribe', [NotificationController::class, 'unsubscribe']);
+        Route::get('/vapid-key', [NotificationController::class, 'getVapidPublicKey']);
+        Route::get('/subscriptions-count', [NotificationController::class, 'getSubscriptionsCount']);
+        Route::post('/test', [NotificationController::class, 'sendTestNotification']);
     });
 });

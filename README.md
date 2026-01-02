@@ -57,3 +57,57 @@ If you discover a security vulnerability within Laravel, please send an e-mail t
 ## License
 
 The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+
+## Project Setup
+
+### Backend Setup
+
+1. **Clone dan install dependencies:**
+   ```bash
+   composer install
+   cp .env.example .env
+   php artisan key:generate
+   ```
+
+2. **Generate VAPID Keys untuk Push Notification:**
+   ```bash
+   php artisan vapid:keys
+   ```
+   Command ini akan auto-generate VAPID keys dan update `.env` file.
+
+3. **Database Migration:**
+   ```bash
+   php artisan migrate
+   ```
+
+4. **Start development server:**
+   ```bash
+   php artisan serve
+   ```
+
+### Push Notification Features
+
+✨ **Real-time Push Notifications**
+- Automatic notification saat tugas baru dibuat
+- Targeted notifications berdasarkan kelas dan siswa
+- Service Worker untuk background notification handling
+- Auto permission request di frontend
+
+📋 **Fitur Kompleks Notification:**
+- Send ke single user
+- Send ke entire class
+- Send ke multiple classes
+- Send ke siswa spesifik
+- Intelligent subscription management
+
+🔐 **Security:**
+- VAPID keys untuk verification
+- JWT authentication untuk API endpoints
+- Subscription validation dan cleanup
+
+📚 **Setup Documentation:**
+Lihat [PUSH_NOTIFICATION_SETUP.md](./PUSH_NOTIFICATION_SETUP.md) untuk detailed setup guide.
+
+### API Documentation
+
+Lihat [API_DOCUMENTATION.md](./API_DOCUMENTATION.md) untuk lengkap API endpoints.
