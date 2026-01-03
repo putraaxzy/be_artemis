@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use App\Models\Follow;
 use App\Models\Penugasaan;
+use App\Events\UserFollowed;
+use App\Services\PushNotificationService;
 use Illuminate\Http\Request;
 
 class ProfileController extends Controller
@@ -109,9 +111,9 @@ class ProfileController extends Controller
      */
     public function follow($id)
     {
-        $user = auth()->user();
+        $currentUser = auth()->user();
 
-        if ($user->id == $id) {
+        if ($currentUser->id == $id) {
             return response()->json([
                 'berhasil' => false,
                 'pesan' => 'Tidak bisa follow diri sendiri',
@@ -120,7 +122,7 @@ class ProfileController extends Controller
 
         $target = User::findOrFail($id);
 
-        $exists = Follow::where('follower_id', $user->id)
+        $exists = Follow::where('follower_id', $currentUser->id)
             ->where('following_id', $id)
             ->exists();
 
@@ -132,9 +134,46 @@ class ProfileController extends Controller
         }
 
         Follow::create([
-            'follower_id' => $user->id,
+            'follower_id' => $currentUser->id,
             'following_id' => $id,
         ]);
+
+        // Get fresh user model for notifications
+        $follower = User::find($currentUser->id);
+
+        // Send push notification
+        try {
+            $notification = [
+                'title' => 'Follower Baru!',
+                'body' => "{$follower->name} mulai mengikuti Anda",
+                'icon' => $this->getAvatarUrl($follower),
+                'badge' => url('/batik.png'),
+                'tag' => 'user-followed-' . $follower->id,
+                'data' => [
+                    'type' => 'follow',
+                    'url' => "/profile/{$follower->username}",
+                    'followerId' => $follower->id,
+                    'followerUsername' => $follower->username,
+                ],
+            ];
+
+            $pushService = new PushNotificationService();
+            $pushService->sendToUser($target, $notification);
+
+            \Log::info('Follow notification sent', [
+                'from' => $follower->id,
+                'to' => $target->id,
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Failed to send follow notification: ' . $e->getMessage());
+        }
+
+        // Broadcast event via Reverb untuk real-time notification
+        try {
+            broadcast(new UserFollowed($follower, $id));
+        } catch (\Exception $e) {
+            \Log::error('Failed to broadcast follow event: ' . $e->getMessage());
+        }
 
         return response()->json([
             'berhasil' => true,
