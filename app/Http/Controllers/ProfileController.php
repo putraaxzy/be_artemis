@@ -48,6 +48,7 @@ class ProfileController extends Controller
             'berhasil' => true,
             'data' => [
                 'id' => $profile->id,
+                'username' => $profile->username,
                 'name' => $profile->name,
                 'bio' => $profile->bio,
                 'avatar' => $this->getAvatarUrl($profile),
@@ -224,8 +225,11 @@ class ProfileController extends Controller
     {
         $query = $request->input('q', '');
         
-        $users = User::where('name', 'like', "%{$query}%")
-            ->select('id', 'name', 'role', 'kelas', 'jurusan', 'avatar')
+        $users = User::where(function ($q) use ($query) {
+                $q->where('name', 'like', "%{$query}%")
+                  ->orWhere('username', 'like', "%{$query}%");
+            })
+            ->select('id', 'username', 'name', 'role', 'kelas', 'jurusan', 'avatar')
             ->limit(20)
             ->get()
             ->map(function ($user) {
