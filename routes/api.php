@@ -99,7 +99,6 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::prefix('notifications')->group(function () {
         Route::post('/subscribe', [NotificationController::class, 'subscribe']);
         Route::post('/unsubscribe', [NotificationController::class, 'unsubscribe']);
-        Route::get('/vapid-key', [NotificationController::class, 'getVapidPublicKey']);
         Route::get('/subscriptions-count', [NotificationController::class, 'getSubscriptionsCount']);
         Route::post('/test', [NotificationController::class, 'sendTestNotification']);
     });

@@ -7,6 +7,8 @@ use App\Models\Penugasaan;
 use App\Models\User;
 use App\Exports\TugasExport;
 use App\Services\PushNotificationService;
+use App\Events\TaskCreated;
+use App\Events\TaskSubmitted;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Maatwebsite\Excel\Facades\Excel;
@@ -220,6 +222,19 @@ class TugasController extends Controller
             $notificationService->sendToTargetStudents('siswa', $siswaIds, $notification);
         }
 
+        // Broadcast real-time notification via Reverb
+        try {
+            \Log::info('Broadcasting TaskCreated event', [
+                'task_id' => $tugas->id,
+                'target_siswa_count' => count($siswaIds),
+                'siswa_ids' => $siswaIds
+            ]);
+            broadcast(new TaskCreated($tugas, $siswaIds))->toOthers();
+            \Log::info('TaskCreated event broadcasted successfully');
+        } catch (\Exception $e) {
+            \Log::error('Failed to broadcast TaskCreated event: ' . $e->getMessage());
+        }
+
         return response()->json([
             'berhasil' => true,
             'data' => [
@@ -367,6 +382,10 @@ class TugasController extends Controller
             $guru = User::find($tugas->id_guru);
             
             if ($guru) {
+                // Broadcast via Reverb untuk realtime notification
+                event(new TaskSubmitted($tugas, $user, $guru->id));
+
+                // Push notification via web push
                 $pushService = new PushNotificationService();
                 $pushService->sendToUser($guru, [
                     'title' => 'Tugas Dikumpulkan',
@@ -374,7 +393,7 @@ class TugasController extends Controller
                     'icon' => '/icon-192x192.png',
                     'badge' => '/icon-192x192.png',
                     'data' => [
-                        'url' => '/task/' . $tugas->id,
+                        'url' => '/dashboard/' . $tugas->id,
                         'type' => 'task_submitted',
                         'task_id' => $tugas->id,
                         'student_id' => $user->id,

@@ -15,12 +15,13 @@ return [
     |
     */
 
-    'paths' => ['api/*', 'sanctum/csrf-cookie'],
+    'paths' => ['api/*', 'sanctum/csrf-cookie', 'broadcasting/*'],
 
     'allowed_methods' => ['*'],
 
     'allowed_origins' => [
         'http://localhost:5173',
+        'http://localhost:3000',
         'https://artemissmea.vercel.app',
         'https://artemis-smea.vercel.app',
     ],
