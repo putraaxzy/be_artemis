@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
-use App\Models\Jurusan;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
@@ -17,24 +16,38 @@ class AuthController extends Controller
      */
     public function registerOptions()
     {
-        // Ambil data jurusan dari database
-        $jurusans = Jurusan::all();
-        
-        // Group by kelas for frontend structure
+        // Fetch jurusan from database
+        $jurusanData = \App\Models\Jurusan::orderBy('kelas')
+            ->orderBy('jurusan')
+            ->get();
+
+        // Group by kelas
         $jurusanByKelas = [];
-        foreach ($jurusans as $j) {
-            $jurusanByKelas[$j->kelas][] = $j->jurusan;
+        foreach ($jurusanData as $item) {
+            $kelas = $item->kelas;
+            if (!isset($jurusanByKelas[$kelas])) {
+                $jurusanByKelas[$kelas] = [];
+            }
+            $jurusanByKelas[$kelas][] = $item->jurusan;
         }
 
-        // Flatten semua jurusan unik
-        $allJurusan = $jurusans->pluck('jurusan')->unique()->values()->all();
+        // Get unique kelas list
+        $kelasList = array_keys($jurusanByKelas);
+        sort($kelasList);
+
+        // Flatten semua jurusan untuk backward compatibility
+        $allJurusan = [];
+        foreach ($jurusanByKelas as $jurusans) {
+            $allJurusan = array_merge($allJurusan, $jurusans);
+        }
+        $allJurusan = array_unique($allJurusan);
         sort($allJurusan);
 
         return response()->json([
             'berhasil' => true,
             'data' => [
-                'kelas' => ['X', 'XI', 'XII'], // Bisa juga diambil dari DB unique 'kelas', tapi hardcode OK for order
-                'jurusan' => $allJurusan, 
+                'kelas' => $kelasList,
+                'jurusan' => array_values($allJurusan), 
                 'jurusan_by_kelas' => $jurusanByKelas, 
             ],
             'pesan' => 'Opsi registrasi berhasil diambil'
@@ -46,16 +59,17 @@ class AuthController extends Controller
      */
     public function register(Request $request)
     {
-        // Valid jurusan berdasarkan kelas (Query DB)
-        // Kita cek manual atau pakai exists rule nanti
-        
+        // Get valid kelas from database
+        $validKelas = \App\Models\Jurusan::distinct()->pluck('kelas')->toArray();
+        $kelasRule = 'required|in:' . implode(',', $validKelas);
+
         $validator = Validator::make($request->all(), [
             'username' => 'required|string|max:255|unique:users|regex:/^[a-zA-Z0-9_]+$/',
             'name' => 'required|string|max:255',
             'telepon' => 'required|string|max:20|unique:users',
             'password' => 'required|string|min:8',
-            'kelas' => 'required|in:X,XI,XII',
-            'jurusan' => 'required|string|max:50' // Validasi logic di bawah
+            'kelas' => $kelasRule,
+            'jurusan' => 'required|string|max:50'
         ]);
 
         if ($validator->fails()) {
@@ -65,15 +79,15 @@ class AuthController extends Controller
             ], 400);
         }
 
-        // Validasi jurusan sesuai kelas via Database
+        // Validasi jurusan sesuai kelas dari database
         $kelas = $request->kelas;
         $jurusan = $request->jurusan;
         
-        $exists = Jurusan::where('kelas', $kelas)
+        $isValidJurusan = \App\Models\Jurusan::where('kelas', $kelas)
             ->where('jurusan', $jurusan)
             ->exists();
-
-        if (!$exists) {
+        
+        if (!$isValidJurusan) {
             return response()->json([
                 'berhasil' => false,
                 'pesan' => "Jurusan '$jurusan' tidak valid untuk kelas $kelas"
