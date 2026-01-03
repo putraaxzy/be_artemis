@@ -10,37 +10,42 @@ use Illuminate\Http\Request;
 class ProfileController extends Controller
 {
     /**
-     * Get user profile
+     * Get user profile by username
      */
-    public function show($id)
+    public function show($username)
     {
         $user = auth()->user();
-        $profile = User::findOrFail($id);
+        
+        if (is_numeric($username)) {
+            $profile = User::findOrFail($username);
+        } else {
+            $profile = User::where('username', $username)->firstOrFail();
+        }
 
-        $followersCount = Follow::where('following_id', $id)->count();
-        $followingCount = Follow::where('follower_id', $id)->count();
+        $followersCount = Follow::where('following_id', $profile->id)->count();
+        $followingCount = Follow::where('follower_id', $profile->id)->count();
         
         $isFollowing = false;
         if ($user) {
             $isFollowing = Follow::where('follower_id', $user->id)
-                ->where('following_id', $id)
+                ->where('following_id', $profile->id)
                 ->exists();
         }
 
         // Get performance stats (siswa only)
         $stats = null;
         if ($profile->role === 'siswa') {
-            $penugasaan = Penugasaan::where('id_siswa', $id)
+            $penugasaan = Penugasaan::where('id_siswa', $profile->id)
                 ->whereNotNull('nilai')
                 ->get();
 
             $stats = [
-                'total_tasks' => Penugasaan::where('id_siswa', $id)->count(),
-                'completed_tasks' => Penugasaan::where('id_siswa', $id)
+                'total_tasks' => Penugasaan::where('id_siswa', $profile->id)->count(),
+                'completed_tasks' => Penugasaan::where('id_siswa', $profile->id)
                     ->where('status', 'selesai')
                     ->count(),
                 'average_score' => round($penugasaan->avg('nilai') ?? 0, 1),
-                'performance_data' => $this->getPerformanceData($id),
+                'performance_data' => $this->getPerformanceData($profile->id),
             ];
         }
 
