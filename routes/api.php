@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\TugasController;
 use App\Http\Controllers\BotController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\ProfileController;
 
 /*
 |--------------------------------------------------------------------------
@@ -93,6 +94,17 @@ Route::middleware(['jwt.auth'])->group(function () {
     // riwayat bot reminder (hanya guru)
     Route::prefix('bot')->middleware(['role:guru'])->group(function () {
         Route::get('/reminder/{idTugas}', [BotController::class, 'ambilReminder']);
+    });
+
+    // routes profile dan follow
+    Route::prefix('profile')->group(function () {
+        Route::get('/search', [ProfileController::class, 'search']);
+        Route::put('/bio', [ProfileController::class, 'updateBio']);
+        Route::get('/{id}', [ProfileController::class, 'show']);
+        Route::get('/{id}/followers', [ProfileController::class, 'followers']);
+        Route::get('/{id}/following', [ProfileController::class, 'following']);
+        Route::post('/{id}/follow', [ProfileController::class, 'follow']);
+        Route::delete('/{id}/follow', [ProfileController::class, 'unfollow']);
     });
 
     // routes push notification
