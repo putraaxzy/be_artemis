@@ -59,7 +59,7 @@ class TugasController extends Controller
             'file_detail' => 'nullable|file|max:102400',
             'target' => 'required|in:siswa,kelas',
             'id_target' => 'required|array|min:1',
-            'tipe_pengumpulan' => 'required|in:link,langsung',
+            'tipe_pengumpulan' => 'required|in:link,langsung,pemberitahuan',
             'tanggal_mulai' => 'nullable|date',
             'tanggal_deadline' => 'nullable|date|after_or_equal:tanggal_mulai',
             'tampilkan_nilai' => 'nullable|boolean',
@@ -366,6 +366,12 @@ class TugasController extends Controller
             $penugasan->update([
                 'status' => 'dikirim',
                 'link_drive' => $request->link_drive,
+                'tanggal_pengumpulan' => now()
+            ]);
+        } elseif ($tipePengumpulan === 'pemberitahuan') {
+            // tipe pemberitahuan: siswa konfirmasi sudah membaca (status selesai)
+            $penugasan->update([
+                'status' => 'selesai',
                 'tanggal_pengumpulan' => now()
             ]);
         } else {

@@ -19,7 +19,7 @@ return new class extends Migration
             $table->string('file_detail')->nullable();
             $table->enum('target', ['siswa', 'kelas']);
             $table->json('id_target');
-            $table->enum('tipe_pengumpulan', ['link', 'langsung'])->default('link');
+            $table->enum('tipe_pengumpulan', ['link', 'langsung', 'pemberitahuan'])->default('link');
             $table->dateTime('tanggal_mulai')->nullable();
             $table->dateTime('tanggal_deadline')->nullable();
             $table->timestamps();
