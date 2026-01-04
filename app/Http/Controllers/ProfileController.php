@@ -79,6 +79,8 @@ class ProfileController extends Controller
         
         $request->validate([
             'bio' => 'nullable|string|max:200',
+        ], [
+            'bio.max' => 'Bio maksimal 200 karakter',
         ]);
         
         $user->bio = $request->bio;
@@ -204,7 +206,7 @@ class ProfileController extends Controller
     public function followers($id)
     {
         $followers = Follow::where('following_id', $id)
-            ->with('follower:id,name,role,kelas,jurusan,avatar')
+            ->with('follower:id,username,name,role,kelas,jurusan,avatar')
             ->get()
             ->map(function ($follow) {
                 $follower = $follow->follower;
@@ -224,7 +226,7 @@ class ProfileController extends Controller
     public function following($id)
     {
         $following = Follow::where('follower_id', $id)
-            ->with('following:id,name,role,kelas,jurusan,avatar')
+            ->with('following:id,username,name,role,kelas,jurusan,avatar')
             ->get()
             ->map(function ($follow) {
                 $user = $follow->following;

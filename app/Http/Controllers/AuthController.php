@@ -64,7 +64,7 @@ class AuthController extends Controller
         $kelasRule = 'required|in:' . implode(',', $validKelas);
 
         $validator = Validator::make($request->all(), [
-            'username' => 'required|string|max:255|unique:users|regex:/^[a-zA-Z0-9_]+$/',
+            'username' => 'required|string|min:3|max:30|unique:users|regex:/^[a-zA-Z0-9_]+$/',
             'name' => 'required|string|max:255',
             'telepon' => 'required|string|max:20|unique:users',
             'password' => 'required|string|min:8',
@@ -222,7 +222,7 @@ class AuthController extends Controller
         $user = JWTAuth::user();
         
         $validator = Validator::make($request->all(), [
-            'username' => 'sometimes|required|string|max:255|regex:/^[a-zA-Z0-9_.]+$/|unique:users,username,' . $user->id,
+            'username' => 'sometimes|required|string|min:3|max:30|regex:/^[a-zA-Z0-9_.]+$/|unique:users,username,' . $user->id,
             'name' => 'sometimes|required|string|max:255',
             'telepon' => 'sometimes|nullable|string|max:20',
             'password' => 'sometimes|required|string|min:8',
@@ -302,7 +302,7 @@ class AuthController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'username' => 'required|string|max:255|regex:/^[a-zA-Z0-9_.]+$/|unique:users,username,' . $user->id,
+            'username' => 'required|string|min:3|max:30|regex:/^[a-zA-Z0-9_.]+$/|unique:users,username,' . $user->id,
             'password' => 'required|string|min:8',
             'telepon' => 'nullable|string|max:20',
             'avatar' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:10240', 
