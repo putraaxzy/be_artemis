@@ -16,47 +16,74 @@ class ProfileController extends Controller
      */
     public function show($username)
     {
-        $user = auth()->user();
-        
-        if (is_numeric($username)) {
-            $profile = User::findOrFail($username);
-        } else {
-            $profile = User::where('username', $username)->firstOrFail();
-        }
+        try {
+            $user = auth()->user();
+            
+            // Try to find user by ID first if numeric, then by username
+            $profile = null;
+            if (is_numeric($username)) {
+                $profile = User::find($username);
+            }
+            
+            // If not found by ID or not numeric, search by username
+            if (!$profile) {
+                $profile = User::where('username', $username)->first();
+            }
+            
+            // If still not found, return 404
+            if (!$profile) {
+                \Log::warning('Profile not found', ['username' => $username]);
+                return response()->json([
+                    'berhasil' => false,
+                    'pesan' => 'Profil tidak ditemukan',
+                ], 404);
+            }
 
-        $followersCount = Follow::where('following_id', $profile->id)->count();
-        $followingCount = Follow::where('follower_id', $profile->id)->count();
-        
-        $isFollowing = false;
-        if ($user) {
-            $isFollowing = Follow::where('follower_id', $user->id)
-                ->where('following_id', $profile->id)
-                ->exists();
-        }
+            $followersCount = Follow::where('following_id', $profile->id)->count();
+            $followingCount = Follow::where('follower_id', $profile->id)->count();
+            
+            $isFollowing = false;
+            if ($user) {
+                $isFollowing = Follow::where('follower_id', $user->id)
+                    ->where('following_id', $profile->id)
+                    ->exists();
+            }
 
-        // Get performance stats (siswa only)
-        $stats = null;
-        if ($profile->role === 'siswa') {
-            $stats = $this->getStatsData($profile->id);
-        }
+            // Get performance stats (siswa only)
+            $stats = null;
+            if ($profile->role === 'siswa') {
+                $stats = $this->getStatsData($profile->id);
+            }
 
-        return response()->json([
-            'berhasil' => true,
-            'data' => [
-                'id' => $profile->id,
-                'username' => $profile->username,
-                'name' => $profile->name,
-                'bio' => $profile->bio,
-                'avatar' => $this->getAvatarUrl($profile),
-                'role' => $profile->role,
-                'kelas' => $profile->kelas,
-                'jurusan' => $profile->jurusan,
-                'followers_count' => $followersCount,
-                'following_count' => $followingCount,
-                'is_following' => $isFollowing,
-                'stats' => $stats,
-            ],
-        ]);
+            return response()->json([
+                'berhasil' => true,
+                'data' => [
+                    'id' => $profile->id,
+                    'username' => $profile->username,
+                    'name' => $profile->name,
+                    'bio' => $profile->bio,
+                    'avatar' => $this->getAvatarUrl($profile),
+                    'role' => $profile->role,
+                    'kelas' => $profile->kelas,
+                    'jurusan' => $profile->jurusan,
+                    'followers_count' => $followersCount,
+                    'following_count' => $followingCount,
+                    'is_following' => $isFollowing,
+                    'stats' => $stats,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Profile show error', [
+                'username' => $username,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            
+            return response()->json([
+                'berhasil' => false,
+                'pesan' => 'Terjadi kesalahan saat memuat profil',
+            ], 500);
+        }
     }
 
     /**
@@ -234,26 +261,41 @@ class ProfileController extends Controller
      */
     private function getStatsData($userId)
     {
-        // Get all penugasaan with nilai
-        $penugasaan = Penugasaan::where('id_siswa', $userId)
-            ->whereNotNull('nilai')
-            ->get();
+        try {
+            // Get all penugasaan with nilai
+            $penugasaan = Penugasaan::where('id_siswa', $userId)
+                ->whereNotNull('nilai')
+                ->get();
 
-        // Calculate stats
-        $totalTasks = Penugasaan::where('id_siswa', $userId)->count();
-        $completedTasks = Penugasaan::where('id_siswa', $userId)
-            ->where('status', 'selesai')
-            ->count();
-        $averageScore = $penugasaan->count() > 0 
-            ? round($penugasaan->avg('nilai'), 1) 
-            : 0;
+            // Calculate stats
+            $totalTasks = Penugasaan::where('id_siswa', $userId)->count();
+            $completedTasks = Penugasaan::where('id_siswa', $userId)
+                ->where('status', 'selesai')
+                ->count();
+            $averageScore = $penugasaan->count() > 0 
+                ? round($penugasaan->avg('nilai'), 1) 
+                : 0;
 
-        return [
-            'total_tasks' => $totalTasks,
-            'completed_tasks' => $completedTasks,
-            'average_score' => $averageScore,
-            'performance_data' => $this->getPerformanceData($userId),
-        ];
+            return [
+                'total_tasks' => $totalTasks,
+                'completed_tasks' => $completedTasks,
+                'average_score' => $averageScore,
+                'performance_data' => $this->getPerformanceData($userId),
+            ];
+        } catch (\Exception $e) {
+            \Log::error('Error getting stats data', [
+                'userId' => $userId,
+                'error' => $e->getMessage(),
+            ]);
+            
+            // Return empty stats instead of crashing
+            return [
+                'total_tasks' => 0,
+                'completed_tasks' => 0,
+                'average_score' => 0,
+                'performance_data' => [],
+            ];
+        }
     }
 
     /**
@@ -261,23 +303,32 @@ class ProfileController extends Controller
      */
     private function getPerformanceData($userId)
     {
-        $data = Penugasaan::where('id_siswa', $userId)
-            ->whereNotNull('nilai')
-            ->with('tugas:id,judul')
-            ->orderBy('created_at', 'desc')
-            ->take(10)
-            ->get()
-            ->reverse()
-            ->values()
-            ->map(function ($penugasaan) {
-                return [
-                    'task' => substr($penugasaan->tugas->judul ?? 'Tugas', 0, 20),
-                    'score' => $penugasaan->nilai,
-                    'date' => $penugasaan->created_at->format('d/m'),
-                ];
-            });
+        try {
+            $data = Penugasaan::where('id_siswa', $userId)
+                ->whereNotNull('nilai')
+                ->with('tugas:id,judul')
+                ->orderBy('created_at', 'desc')
+                ->take(10)
+                ->get()
+                ->reverse()
+                ->values()
+                ->map(function ($penugasaan) {
+                    return [
+                        'task' => substr($penugasaan->tugas->judul ?? 'Tugas', 0, 20),
+                        'score' => $penugasaan->nilai,
+                        'date' => $penugasaan->created_at->format('d/m'),
+                    ];
+                });
 
-        return $data;
+            return $data;
+        } catch (\Exception $e) {
+            \Log::error('Error getting performance data', [
+                'userId' => $userId,
+                'error' => $e->getMessage(),
+            ]);
+            
+            return [];
+        }
     }
 
     /**
