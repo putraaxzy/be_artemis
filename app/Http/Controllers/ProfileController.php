@@ -37,18 +37,7 @@ class ProfileController extends Controller
         // Get performance stats (siswa only)
         $stats = null;
         if ($profile->role === 'siswa') {
-            $penugasaan = Penugasaan::where('id_siswa', $profile->id)
-                ->whereNotNull('nilai')
-                ->get();
-
-            $stats = [
-                'total_tasks' => Penugasaan::where('id_siswa', $profile->id)->count(),
-                'completed_tasks' => Penugasaan::where('id_siswa', $profile->id)
-                    ->where('status', 'selesai')
-                    ->count(),
-                'average_score' => round($penugasaan->avg('nilai') ?? 0, 1),
-                'performance_data' => $this->getPerformanceData($profile->id),
-            ];
+            $stats = $this->getStatsData($profile->id);
         }
 
         return response()->json([
@@ -238,6 +227,33 @@ class ProfileController extends Controller
             'berhasil' => true,
             'data' => $following,
         ]);
+    }
+
+    /**
+     * Get comprehensive stats data for siswa
+     */
+    private function getStatsData($userId)
+    {
+        // Get all penugasaan with nilai
+        $penugasaan = Penugasaan::where('id_siswa', $userId)
+            ->whereNotNull('nilai')
+            ->get();
+
+        // Calculate stats
+        $totalTasks = Penugasaan::where('id_siswa', $userId)->count();
+        $completedTasks = Penugasaan::where('id_siswa', $userId)
+            ->where('status', 'selesai')
+            ->count();
+        $averageScore = $penugasaan->count() > 0 
+            ? round($penugasaan->avg('nilai'), 1) 
+            : 0;
+
+        return [
+            'total_tasks' => $totalTasks,
+            'completed_tasks' => $completedTasks,
+            'average_score' => $averageScore,
+            'performance_data' => $this->getPerformanceData($userId),
+        ];
     }
 
     /**
