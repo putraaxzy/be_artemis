@@ -205,7 +205,7 @@ class TugasController extends Controller
             'badge' => url('/batik.png'),
             'tag' => 'task-' . $tugas->id,
             'data' => [
-                'url' => '/tugas/' . $tugas->id,
+                'url' => '/dashboard',
                 'taskId' => $tugas->id,
                 'type' => 'new_task',
             ],
@@ -399,7 +399,7 @@ class TugasController extends Controller
                     'icon' => '/icon-192x192.png',
                     'badge' => '/icon-192x192.png',
                     'data' => [
-                        'url' => '/dashboard/' . $tugas->id,
+                        'url' => '/dashboard',
                         'type' => 'task_submitted',
                         'task_id' => $tugas->id,
                         'student_id' => $user->id,
